@@ -173,7 +173,7 @@ if use_dataloader == True:
                                       #steps_per_epoch=np.ceil(train_IDs.size / batch_size),
                                       #steps_per_epoch=1,
                                       epochs = epochs,
-                                      verbose=2,
+                                      verbose=1,
                                       validation_data=validation_generator,
                                       #validation_steps=np.ceil(val_IDs.size  / batch_size),
                                       callbacks=callbacks_list,
@@ -205,7 +205,7 @@ else:
     
     hist_model = model.fit( x=X_train, y=y_train, epochs=epochs, batch_size=batch_size,
                        #validation_data = (x_val, y_val, val_sample_weights)
-                       validation_split=validation_split, verbose=2, 
+                       validation_split=validation_split, verbose=1, 
                        callbacks=callbacks_list, 
                        sample_weight= sample_weight,
                        shuffle=True )
