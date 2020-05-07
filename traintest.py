@@ -157,8 +157,8 @@ except:
   from res_unet import *
   model = build_res_unet( input_shape  = ( None, None, 3 ), filters=filters_first_layer )
   
-  if num_gpus > 1:
-      model = keras.utils.multi_gpu_model(model,gpus=num_gpus)
+if num_gpus > 1:
+    model = keras.utils.multi_gpu_model(model,gpus=num_gpus)
   
   model.compile( loss=loss, optimizer=optimizer, metrics=metrics[:] )
 
