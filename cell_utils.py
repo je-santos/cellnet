@@ -39,7 +39,6 @@ def get_image_weights(y_train):
 
 
 
-
 def make_folders(model_name, create_new_folder=True):
     try:
         os.mkdir(f'models/{model_name}')

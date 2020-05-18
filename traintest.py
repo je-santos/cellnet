@@ -183,7 +183,7 @@ if use_dataloader == True:
                                       )
     
 else:
-    
+
     #sample_weight = cu.get_image_weights(y_train)
     sample_weight = None
     
