@@ -1,16 +1,21 @@
-# If having trouble use pip install keras-gpu
+# If having trouble use:
+# conda create --name tf  python=3.6 keras-gpu
 
 from matplotlib import pyplot as plt
 import numpy as np
 import time
-import datetime
 
-import keras
-from shutil import copyfile
+
+
+
 import glob
 from PIL import Image
 import os
+
+
+
 import tensorflow as tf
+from tensorflow import keras
 import sklearn
 
 import keras.backend as K
@@ -35,20 +40,25 @@ Semantic segmentation:
     x: tensor of size (batch, x, y, 3).
        the 3 stands for the channels in the RGB image.
        The images are standarized to have a mean of 0
-       and a std of 1
+       and a std of 1 (globally per channel)
     y: binary tensor of size (batch, x, y, categories).
        the number of categories is the number of desired classes.
        This can be achieved using to_categorical()
+       
+    TO DO:
+        -ReduceonPlateau is blowing up
+        -fix the thing to overwrite this .py file (erase it first perhaps)
+        -sample weights don't seem to be working when retraining'
 """
 
 
 
 
-model_name = 'cellnet'
-create_new_folder = False
+model_name          = 'cellnet_test1'
+create_new_folder   =  True
 
 num_gpus            = 1
-batch_size          = 4
+batch_size          = 8
 total_samples4train = 876
 epochs              = 500
 image_dims          = (1080,1280)
@@ -60,36 +70,23 @@ use_dataloader      = False
 data_loc            = '../train_scaled_np'
 
 
-try:
-    os.mkdir(f'models/{model_name}')
-    print("Directory " , model_name ,  " Created ") 
-    
-except FileExistsError:
-    print("Directory " , model_name ,  " already exists")
-    if create_new_folder == True:
-      model_name = model_name + datetime.datetime.today().strftime("_%d_%m_%y_%H:%M:%S")
-      print("Creating " , model_name ,  " directory")
-      os.mkdir(f'models/{model_name}')
 
-try: 
-    copyfile('traintest.py',f'models/{model_name}' + '/traintest.py');
-except:
-    print('The script has not been modified')
-
-
+model_name = cu.make_folders(model_name, create_new_folder)
+# we create a number with the model name (unique)
+rnd_seed = np.sum( [ord(letter) for letter in model_name] )*123123
+# we use this num as the rnd seed for numpy
+np.random.seed( rnd_seed )
 
 
 if use_dataloader == True:
-    # we create a number with the model name (unique)
-    rnd_seed = np.sum( [ord(letter) for letter in model_name] )*123123
-    # we use this num as the rnd seed for numpy
-    np.random.seed( rnd_seed )
+    
     ## Data-generator
     IDs = np.arange(0, total_samples4train)
     np.random.shuffle( IDs ) #get a mask to shuffle data
     val_split = int( total_samples4train*validation_split )
     train_IDs = IDs[:-val_split]
     val_IDs   = IDs[-val_split:]
+    
     training_generator   = cu.DataGenerator(data_loc, train_IDs, 
                                             batch_size=batch_size,
                                             dim = image_dims)
@@ -97,30 +94,34 @@ if use_dataloader == True:
     validation_generator = cu.DataGenerator(data_loc, val_IDs, 
                                             batch_size=batch_size,
                                             dim = image_dims)
-                                                    
 
-
-all_dirs = glob.glob(data_loc + '/X/*.npy')
-
-X_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3)).astype(np.int8)
-y_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3)).astype(np.int8)
-
-for im_num in range( len(all_dirs) ):
-    
-    X_train[im_num,:,:,:] = np.load( data_loc + f'/X/{im_num}.npy' ).astype(np.int16)
-    y_train[im_num,:,:,:] = np.load( data_loc + f'/y/{im_num}.npy' ).astype(np.int16)
-    
-
-#y_train = to_categorical(y_train).astype(np.int8)
-
+else:
+        print('Loading the data')
+        all_dirs = glob.glob(data_loc + '/X/*.npy')
+        
+        X_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3))
+        y_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3))
+        
+        for im_num in range( len(all_dirs) ):
+            
+            X_train[im_num,:,:,:] = np.load( data_loc + f'/X/{im_num}.npy' )
+            y_train[im_num,:,:,:] = np.load( data_loc + f'/y/{im_num}.npy' )
+            
+        IDs = np.arange( X_train.shape[0] ) 
+        np.random.shuffle( IDs )
+        X_train = X_train[ IDs ,:,:,: ]
+        y_train = y_train[ IDs ,:,:,: ]
+        
+        
+        
 """
 Callbacks and model internals
 """
 
-loss = tf.keras.losses.categorical_crossentropy
-metrics=[ 'accuracy', cu.iou_loss, cu.build_iou_for(label=1) ] 
+loss    = tf.keras.losses.categorical_crossentropy
+metrics = [ 'accuracy', cu.iou_loss, cu.build_iou_for(label=1) ] 
 
-optimizer     = keras.optimizers.Adam(lr=learning_rate)
+optimizer     = tf.keras.optimizers.Adam(lr=learning_rate)
 #plot_losses   = PlotLossesCallback( fig_path=(f'{model_name}/metrics.png'))  
 plot_losses   = PlotLossesCallback( )  
 nan_terminate = TerminateOnNaN()
@@ -139,69 +140,52 @@ checkpoint = ModelCheckpoint(f'models/{model_name}/{model_name}.h5',
                              monitor='val_loss', verbose=1, save_best_only=True, 
                              mode='min',save_weights_only=False)
 
-callbacks_list = [early_stop,checkpoint,plot_losses,csv_logger,nan_terminate,
-                  ReduceLR]
+callbacks_list = [early_stop,checkpoint,csv_logger,nan_terminate,
+                  #ReduceLR, 
+                  plot_losses]
 
 try:
-  model = keras.models.load_model( 'models/' + model_name + '/' + model_name + '.h5', 
-                                     custom_objects={'iou_loss': cu.iou_loss,
+    model = keras.models.load_model( 'models/' + model_name + '/' + model_name + '.h5', 
+                                      custom_objects={'iou_loss': cu.iou_loss,
                                                      'iou_1': cu.build_iou_for(label=1)} ) #loads the model
-  print('-'*50)
-  print(f'Sucefully loaded {model_name}')    
-  print('-'*50)
+    print('-'*50)
+    print(f'Sucefully loaded {model_name}')    
+    print('-'*50)
 
 except:
   print('*'*50)
   print(f'No checkpoint found')
   print('*'*50)
-  from res_unet import *
-  model = build_res_unet( input_shape  = ( None, None, 3 ), filters=filters_first_layer )
   
+  from res_unet import *
+  model = build_res_unet( input_shape  = ( None, None, 3 ), 
+                         filters=filters_first_layer )
+  
+    
 if num_gpus > 1:
     model = keras.utils.multi_gpu_model(model,gpus=num_gpus)
   
-  model.compile( loss=loss, optimizer=optimizer, metrics=metrics[:] )
 
 
-
-
+model.compile( loss=loss, optimizer=optimizer, metrics=metrics[:] )
 
 start_time = time.time()
 
 if use_dataloader == True:
     hist_model = model.fit_generator( generator=training_generator,
-                                      #steps_per_epoch=np.ceil(train_IDs.size / batch_size),
-                                      #steps_per_epoch=1,
                                       epochs = epochs,
                                       verbose=1,
                                       validation_data=validation_generator,
-                                      #validation_steps=np.ceil(val_IDs.size  / batch_size),
                                       callbacks=callbacks_list,
                                       use_multiprocessing=False,
-                                      max_queue_size=4,
+                                      max_queue_size=1,
                                       #workers=2
                                       )
     
 else:
     
-    # This adds weight (attention) for balancing classes
-    from sklearn.utils.class_weight import compute_class_weight
-    
-    y_integers    = np.argmax(y_train, axis=3)
-    class_weights = compute_class_weight('balanced', np.unique(y_integers), y_integers.flatten() )
-    print(class_weights)
-    d_class_weights = dict(enumerate(class_weights))
-    
-    sample_weight = np.zeros((np.shape(y_integers)[0])) 
-    for sample in range(np.shape( sample_weight)[0] ):
-      frac_0 = np.sum( y_integers[sample,:,:]==0 )/np.size(y_integers[sample,:,:])
-      frac_1 = np.sum( y_integers[sample,:,:]==1 )/np.size(y_integers[sample,:,:])
-      frac_2 = np.sum( y_integers[sample,:,:]==2 )/np.size(y_integers[sample,:,:])
-    
-      sample_weight[sample] = frac_0*d_class_weights[0]+frac_1*d_class_weights[1]+ \
-                              frac_2*d_class_weights[2]
-    
-    del y_integers
+    #sample_weight = cu.get_image_weights(y_train)
+    sample_weight = None
     
     hist_model = model.fit( x=X_train, y=y_train, epochs=epochs, batch_size=batch_size,
                        #validation_data = (x_val, y_val, val_sample_weights)

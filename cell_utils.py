@@ -7,6 +7,62 @@ from PIL import Image
 import json
 import os
 import gc
+import datetime
+from shutil import copyfile
+from sklearn.utils.class_weight import compute_class_weight
+
+
+
+
+def get_image_weights(y_train):
+    
+    print('Calculating class weights')
+    # This adds weight (attention) for balancing classes
+
+    y_integers    = np.argmax(y_train, axis=3)
+    class_weights = compute_class_weight('balanced', np.unique(y_integers), 
+                                                     y_integers.flatten() )
+    
+    print(f'The classes weights are : {class_weights}')
+    d_class_weights = dict(enumerate(class_weights))
+    
+    sample_weight = np.zeros((np.shape(y_integers)[0])) 
+    for sample in range(np.shape( sample_weight)[0] ):
+      frac_0 = np.sum( y_integers[sample,:,:]==0 )/np.size(y_integers[sample,:,:])
+      frac_1 = np.sum( y_integers[sample,:,:]==1 )/np.size(y_integers[sample,:,:])
+      frac_2 = np.sum( y_integers[sample,:,:]==2 )/np.size(y_integers[sample,:,:])
+    
+      sample_weight[sample] = frac_0*d_class_weights[0]+frac_1*d_class_weights[1]+ \
+                              frac_2*d_class_weights[2]
+    
+    return sample_weight
+
+
+
+
+def make_folders(model_name, create_new_folder=True):
+    try:
+        os.mkdir(f'models/{model_name}')
+        print("Directory " , model_name ,  " Created ") 
+    
+    except FileExistsError:
+        print("Directory " , model_name ,  " already exists")
+        if create_new_folder == True:
+          model_name = model_name + datetime.datetime.today().strftime("_%d_%H_%M")
+          print("Creating " , model_name ,  " directory")
+          os.mkdir(f'models/{model_name}')
+    
+    
+    try: 
+        copyfile('traintest.py',f'models/{model_name}' + '/traintest.py');
+    except:
+        print('tobefixed:The script has not been modified')
+
+
+    return model_name
+
+
+
 
 def weighted_categorical_crossentropy(weights):
     """
@@ -256,14 +312,12 @@ class DataGenerator(keras.utils.Sequence):
     def __getitem__(self, index):
        'Generate one batch of data'
        # Generate indexes of the batch
-       #print('Hi, ill generate one batch for you')
        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
        
        # Find list of IDs
        list_IDs_temp = [self.list_IDs[k] for k in indexes]
 
        # Generate data
-       #gc.collect()
        X, y = self.__data_generation(list_IDs_temp)
        
        return X, y
@@ -271,7 +325,7 @@ class DataGenerator(keras.utils.Sequence):
     def on_epoch_end(self):
         'Updates indexes after each epoch'
         self.indexes = np.arange(len(self.list_IDs))
-        #print(self.indexes)
+      
         if self.shuffle == True:
             np.random.shuffle(self.indexes)
             
