@@ -1,5 +1,4 @@
-# If having trouble use:
-# conda create --name tf  python=3.6 keras-gpu
+# If having trouble use pip install keras-gpu
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -28,6 +27,8 @@ from keras.callbacks import TerminateOnNaN
 from keras.callbacks import ReduceLROnPlateau
 
 from keras.utils import to_categorical
+
+from keras.optimizers import Adam
 
 #!pip install livelossplot
 from livelossplot.keras import PlotLossesCallback #liveloss plot has to be installed
@@ -121,7 +122,7 @@ Callbacks and model internals
 loss    = tf.keras.losses.categorical_crossentropy
 metrics = [ 'accuracy', cu.iou_loss, cu.build_iou_for(label=1) ] 
 
-optimizer     = tf.keras.optimizers.Adam(lr=learning_rate)
+optimizer     = Adam(lr=learning_rate)
 #plot_losses   = PlotLossesCallback( fig_path=(f'{model_name}/metrics.png'))  
 plot_losses   = PlotLossesCallback( )  
 nan_terminate = TerminateOnNaN()
@@ -183,7 +184,7 @@ if use_dataloader == True:
                                       )
     
 else:
-
+    
     #sample_weight = cu.get_image_weights(y_train)
     sample_weight = None
     
