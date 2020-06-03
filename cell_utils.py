@@ -344,3 +344,12 @@ class DataGenerator(keras.utils.Sequence):
             y[i,] = np.load((self.file_loc + '/y/' + str(ID) + '.npy'))
 
         return X, y
+
+def renameims():
+    chan = 'R'
+    data_loc            = 'train_scaled/Y_train_scaled'
+    all_dirs = glob.glob(data_loc + f'/*.tif')
+ 
+    for im, imloc in enumerate(all_dirs):
+        print( f'New_Y_train/X_{im:04}.tif')
+        copyfile(imloc, f'New_Y_train/Y_{im:04}.tif')
