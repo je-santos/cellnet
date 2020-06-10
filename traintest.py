@@ -59,7 +59,8 @@ total_samples4train = 207
 epochs              = 500
 image_dims          = (1080,1280)
 validation_split    = 0.2    #splits the last x %
-patience_training   = 55    #epochs before it stops training
+patience_training   = 100    #epochs before it stops training
+patience_LR         = 75     #epochs before reducing LR
 filters_first_layer = 8
 learning_rate       = 1e-4
 use_dataloader      = True
@@ -116,20 +117,20 @@ Callbacks and model internals
 """
 
 loss    = tf.keras.losses.categorical_crossentropy
-metrics = [ 'accuracy', cu.iou_loss, cu.build_iou_for(label=1) ] 
+metrics = [ cu.iou_loss, cu.build_iou_for(label=1) ] 
 
 optimizer     = tf.keras.optimizers.Adam(lr=learning_rate)
 #plot_losses   = PlotLossesCallback( fig_path=(f'{model_name}/metrics.png'))  
 plot_losses   = PlotLossesCallback( )  
 nan_terminate = tf.keras.callbacks.TerminateOnNaN()
 ReduceLR      = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
-                                                     factor=0.1, patience=25,
-                                  verbose=1, mode='auto', min_delta=0.0001, 
-                                  cooldown=0, min_lr=0)
+                                                     factor=0.1, patience=patience_LR,
+                                                     verbose=1, mode='auto', min_delta=0.0001, 
+                                                     cooldown=0, min_lr=0)
 early_stop    = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0, 
-                                              patience=patience_training, 
-                                              verbose=2, mode='auto', baseline=None,
-                                              restore_best_weights=False)
+                                                 patience=patience_training, 
+                                                 verbose=2, mode='auto', baseline=None,
+                                                 restore_best_weights=False)
 
 
 csv_logger = tf.keras.callbacks.CSVLogger(f'models/{model_name}/training_log.csv', append=True)
