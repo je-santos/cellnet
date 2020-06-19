@@ -43,7 +43,6 @@ Semantic segmentation:
        This can be achieved using to_categorical()
        
     TO DO:
-        -ReduceonPlateau is blowing up
         -sample weights don't seem to be working when retraining'
 """
 
