@@ -58,19 +58,27 @@ def decoder(x, from_encoder, filters):
     return main_path
 
 
-def build_res_unet(input_shape, filters=64, channel =None):
+def build_res_unet(input_shape, masks_shape, filters=64, channel =None):
     
     inputs = tf.keras.layers.Input(shape=input_shape)
     
-    #if channel is not None:
-    #    inputs = inputs[:,:,:,channel]
-
+    masks = tf.keras.layers.Input(shape=masks_shape)
+    
     to_decoder = encoder(inputs, filters)
 
     path = res_block(to_decoder[2], [filters*8, filters*8], [(2, 2), (1, 1)])
 
     path = decoder(path, from_encoder=to_decoder, filters=filters)
+    
+    
 
-    path = tf.keras.layers.Conv2D(filters=3, kernel_size=(1, 1), activation='softmax')(path)
+    #path = tf.keras.layers.Conv2D(filters=2, kernel_size=(1, 1),activation='softmax')(path)
+    
+    path = tf.keras.layers.Conv2D(filters=2, kernel_size=(1, 1))(path)
+    
+    
+    path = tf.keras.layers.Multiply()([path,masks])
+    
+    path = tf.keras.layers.Activation(activation='softmax')(path)
 
-    return tf.keras.models.Model(inputs=inputs, outputs=path)
+    return tf.keras.models.Model(inputs=[inputs,masks], outputs=path)

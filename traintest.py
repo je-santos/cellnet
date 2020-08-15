@@ -28,9 +28,12 @@ import sklearn
 #from tf.keras.utils import to_categorical
 
 #pip install git+https://github.com/je-santos/livelossplot
-from livelossplot.keras import PlotLossesCallback #liveloss plot has to be installed
+from livelossplot import PlotLossesKeras #liveloss plot has to be installed
 
 import cell_utils as cu
+
+from livelossplot.plot_losses  import MatplotlibPlot
+
 
 
 """
@@ -50,19 +53,19 @@ Semantic segmentation:
 
 
 model_name          = 'cellnet_today'
-create_new_folder   =  False
+create_new_folder   =  True
 
 num_gpus            = 1
 batch_size          = 8
-total_samples4train = 207
+total_samples4train = 34
 epochs              = 500
-image_dims          = (1080,1280)
+image_dims          = (560,640)
 validation_split    = 0.2    #splits the last x %
 patience_training   = 100    #epochs before it stops training
 patience_LR         = 75     #epochs before reducing LR
 filters_first_layer = 8
 learning_rate       = 1e-4
-use_dataloader      = True
+use_dataloader      = False
 data_loc            = '../train_scaled_np'
 channels            = [0,1,2]
 
@@ -94,33 +97,41 @@ if use_dataloader == True:
 
 else:
         print('Loading the data')
-        all_dirs = glob.glob(data_loc + '/X/*.npy')
+        all_dirs = glob.glob(data_loc + '/X_train/*.npy')
         
         X_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3))
         y_train = np.zeros((len(all_dirs),image_dims[0],image_dims[1],3))
+        masks   = np.zeros((len(all_dirs),image_dims[0],image_dims[1]))
         
         for im_num in range( len(all_dirs) ):
             
-            X_train[im_num,:,:,:] = np.load( data_loc + f'/X/{im_num}.npy' )
-            y_train[im_num,:,:,:] = np.load( data_loc + f'/y/{im_num}.npy' )
+            X_train[im_num,:,:,:] = np.load( data_loc + f'/X_train/{im_num:04}.npy' )
+            y_train[im_num,:,:,:] = np.load( data_loc + f'/y_train/{im_num:04}.npy' )
+            masks[im_num,:,:]   = np.load( data_loc + f'/Binary_R_train/{im_num:04}.npy' )
             
         IDs = np.arange( X_train.shape[0] ) 
         np.random.shuffle( IDs )
         X_train = X_train[ IDs ,:,:,: ]
         y_train = y_train[ IDs ,:,:,: ]
+        masks   = masks[   IDs ,:,:]
         
         
-        
+###### We are going to drop the first channel of y because we don't ned background info anymore
+y_train = y_train[:,:,:,1:] 
+masks/=255
+masks = np.concatenate((masks[:,:,:,np.newaxis],masks[:,:,:,np.newaxis],
+                        #masks[:,:,:,np.newaxis],masks[:,:,:,np.newaxis]
+                        ), axis=3)
+
 """
 Callbacks and model internals
 """
 
 loss    = tf.keras.losses.categorical_crossentropy
-metrics = [ cu.iou_loss, cu.build_iou_for(label=1) ] 
+metrics = [ cu.iou_loss, cu.build_iou_for(label=0) , ] 
 
-optimizer     = tf.keras.optimizers.Adam(lr=learning_rate)
-#plot_losses   = PlotLossesCallback( fig_path=(f'{model_name}/metrics.png'))  
-plot_losses   = PlotLossesCallback( )  
+optimizer     = tf.keras.optimizers.Adam(lr=learning_rate) 
+plot_losses   = PlotLossesKeras(outputs=[MatplotlibPlot(figpath=f'models/{model_name}/metrics.png')]) 
 nan_terminate = tf.keras.callbacks.TerminateOnNaN()
 ReduceLR      = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', 
                                                      factor=0.1, patience=patience_LR,
@@ -145,7 +156,7 @@ callbacks_list = [early_stop,checkpoint,csv_logger,nan_terminate,
 try:
     model = tf.keras.models.load_model( 'models/' + model_name + '/' + model_name + '.h5', 
                                       custom_objects={'iou_loss': cu.iou_loss,
-                                                     'iou_1': cu.build_iou_for(label=1)} ) #loads the model
+                                                     'iou_1': cu.build_iou_for(label=0)} ) #loads the model
     print('-'*50)
     print(f'Sucefully loaded {model_name}')    
     print('-'*50)
@@ -157,6 +168,7 @@ except:
   
   from res_unet import *
   model = build_res_unet( input_shape  = ( None, None, 3 ), 
+                          masks_shape  = ( None, None, 2 ), 
                          filters=filters_first_layer )
   
     
@@ -185,7 +197,7 @@ else:
     #sample_weight = cu.get_image_weights(y_train)
     sample_weight = None
     
-    hist_model = model.fit( x=X_train, y=y_train, epochs=epochs, batch_size=batch_size,
+    hist_model = model.fit( x=[X_train,masks], y=y_train, epochs=epochs, batch_size=batch_size,
                        #validation_data = (x_val, y_val, val_sample_weights)
                        validation_split=validation_split, verbose=1, 
                        callbacks=callbacks_list, 
