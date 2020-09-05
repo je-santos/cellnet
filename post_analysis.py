@@ -8,7 +8,6 @@ Created on Fri Sep  4 13:26:32 2020
 '''
 Things to adjust:
     - change averages that test images are normalized by (in create numpys code)
-    - multiply predicction by mask to get real prediction
     -Fix evaluation script (mismatched dimensions)
 '''
 
@@ -87,7 +86,8 @@ for im_num in range( len(all_dirs) ):
     nuclei = pu.get_nuclei(img, data_loc, im_num, image_dims)      
     
     prediction = model.predict(x=[np.expand_dims(img, axis=0),np.expand_dims(mask, axis=0)])
-    prediction = np.argmax(prediction[0,:,:], axis=2)  # this only shows values of (0,1), need to apply mask to get background
+    prediction = np.argmax(prediction[0,:,:], axis=2)           # This only predicts (0,1)
+    prediction = np.add(prediction, (mask[:,:,0]/np.max(mask[:,:,0]))) # add the mask to segment out backgroud
     if known_test ==True:
         prediction = np.argmax(np.load(y_dirs[im_num]), axis = 2)
         if record_metrics == True:
