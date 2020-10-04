@@ -1,2 +1,2 @@
 # cellnet
-## Semantic segmentation 
+## Semantic cellmentation 
