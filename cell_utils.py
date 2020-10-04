@@ -8,19 +8,17 @@ import datetime
 from shutil import copyfile
 from sklearn.utils.class_weight import compute_class_weight
 
-#import keras 
-#import keras.backend as K
-#from tf.keras.utils import to_categorical
-
 import tensorflow as tf
 
 
-def get_image_weights(y_train):
+
+
+def get_image_weights(y_train, masks):
     
-    print('Calculating class weights')
+    print('Calculating class weights (this might take a while)')
     # This adds weight (attention) for balancing classes
 
-    y_integers    = np.argmax(y_train, axis=3)
+    y_integers    = np.argmax(y_train, axis=3)+masks[:,:,:,0]
     class_weights = compute_class_weight('balanced', np.unique(y_integers), 
                                                      y_integers.flatten() )
     
