@@ -1,7 +1,4 @@
 import numpy as np
-import keras 
-import keras.backend as K
-from keras.utils import to_categorical
 import glob
 from PIL import Image
 import json
@@ -10,16 +7,15 @@ import gc
 import datetime
 from shutil import copyfile
 from sklearn.utils.class_weight import compute_class_weight
+import tensorflow as tf
 
 
-
-
-def get_image_weights(y_train):
+def get_image_weights(y_train, masks):
     
     print('Calculating class weights')
     # This adds weight (attention) for balancing classes
 
-    y_integers    = np.argmax(y_train, axis=3)
+    y_integers    = np.argmax(y_train, axis=3)+masks[:,:,:,0]
     class_weights = compute_class_weight('balanced', np.unique(y_integers), 
                                                      y_integers.flatten() )
     
@@ -52,10 +48,10 @@ def make_folders(model_name, create_new_folder=True):
           os.mkdir(f'models/{model_name}')
     
     
-    try: 
-        copyfile('traintest.py',f'models/{model_name}' + '/traintest.py');
-    except:
-        print('tobefixed:The script has not been modified')
+    try:
+        os.remove(f'models/{model_name}' + '/traintest.py');
+    except: pass
+    copyfile('traintest.py',f'models/{model_name}' + '/traintest.py');
 
 
     return model_name
@@ -76,16 +72,16 @@ def weighted_categorical_crossentropy(weights):
         model.compile(loss=loss,optimizer='adam')
     """
     
-    weights = K.variable(weights)
+    weights = tf.keras.backend.variable(weights)
         
     def loss(y_true, y_pred):
         # scale predictions so that the class probs of each sample sum to 1
-        y_pred /= K.sum(y_pred, axis=-1, keepdims=True)
+        y_pred /= tf.keras.backend.sum(y_pred, axis=-1, keepdims=True)
         # clip to prevent NaN's and Inf's
-        y_pred = K.clip(y_pred, K.epsilon(), 1 - K.epsilon())
+        y_pred = tf.keras.backend.clip(y_pred, tf.keras.backend.epsilon(), 1 - tf.keras.backend.epsilon())
         # calc
-        loss = y_true * K.log(y_pred) * weights
-        loss = -K.sum(loss, -1)
+        loss = y_true * tf.keras.backend.log(y_pred) * weights
+        loss = -tf.keras.backend.sum(loss, -1)
         return loss
     
     return loss
@@ -95,7 +91,7 @@ def iou_loss(true,pred):  #this can be used as a loss if you make it negative
     notTrue = 1 - true
     union = true + (notTrue * pred)
 
-    return (K.sum(intersection, axis=-1) + K.epsilon()) / (K.sum(union, axis=-1) + K.epsilon())
+    return (tf.keras.backend.sum(intersection, axis=-1) + tf.keras.backend.epsilon()) / (tf.keras.backend.sum(union, axis=-1) + tf.keras.backend.epsilon())
 
 def iou(y_true, y_pred, label: int):
     """
@@ -109,15 +105,15 @@ def iou(y_true, y_pred, label: int):
     """
     # extract the label values using the argmax operator then
     # calculate equality of the predictions and truths to the label
-    y_true = K.cast(K.equal(K.argmax(y_true), label), K.floatx())
-    y_pred = K.cast(K.equal(K.argmax(y_pred), label), K.floatx())
+    y_true = tf.keras.backend.cast(tf.keras.backend.equal(tf.keras.backend.argmax(y_true), label), tf.keras.backend.floatx())
+    y_pred = tf.keras.backend.cast(tf.keras.backend.equal(tf.keras.backend.argmax(y_pred), label), tf.keras.backend.floatx())
     # calculate the |intersection| (AND) of the labels
-    intersection = K.sum(y_true * y_pred)
+    intersection = tf.keras.backend.sum(y_true * y_pred)
     # calculate the |union| (OR) of the labels
-    union = K.sum(y_true) + K.sum(y_pred) - intersection
+    union = tf.keras.backend.sum(y_true) + tf.keras.backend.sum(y_pred) - intersection
     # avoid divide by zero - if the union is zero, return 1
     # otherwise, return the intersection over union
-    return K.switch(K.equal(union, 0), 1.0, intersection / union)
+    return tf.keras.backend.switch(tf.keras.backend.equal(union, 0), 1.0, intersection / union)
 
 
 def build_iou_for(label: int, name: str=None):
@@ -169,9 +165,9 @@ def mean_iou(y_true, y_pred):
         the scalar IoU value (mean over all labels)
     """
     # get number of labels to calculate IoU for
-    num_labels = K.int_shape(y_pred)[-1]
+    num_labels = tf.keras.backend.int_shape(y_pred)[-1]
     # initialize a variable to store total IoU in
-    total_iou = K.variable(0)
+    total_iou = tf.keras.backend.variable(0)
     # iterate over labels to calculate IoU for
     for label in range(num_labels):
         total_iou = total_iou + iou(y_true, y_pred, label)
@@ -183,114 +179,11 @@ def mean_iou(y_true, y_pred):
 __all__ = [build_iou_for.__name__, mean_iou.__name__]
 
 
-
-def create_numpyset(im_loc_X = '../X_train_scaled',
-                    im_loc_y = '../y_train_scaled',
-                    im_dir_X = '../train_scaled_np',
-                    im_dir_y = '../train_scaled_np'):
-
-
-    X_R     = []
-    X_G     = []
-    X_B     = []
-    y       = []
-    
-    all_files = glob.glob(im_loc_X+'/*_B_*')
-    
-    
-    for im_num in range( 1, len(all_files)+1 ):
-        
-        names_R = glob.glob(f'{im_loc_X}/*_{im_num}_R*.tif')[0]
-        names_G = glob.glob(f'{im_loc_X}/*_{im_num}_G*.tif')[0]
-        names_B = glob.glob(f'{im_loc_X}/*_{im_num}_B*.tif')[0]
-        names_y = glob.glob(f'{im_loc_y}/*_{im_num}_*.tif')[0]
-        
-        X_R.append(  np.array(Image.open(names_R)) )
-        X_G.append(  np.array(Image.open(names_G)) )
-        X_B.append(  np.array(Image.open(names_B)) )
-        
-        y.append(    np.array(Image.open(names_y)) )
-        
-    
-    X_R = np.array(X_R, dtype='float64')
-    X_G = np.array(X_G, dtype='float64')
-    X_B = np.array(X_B, dtype='float64')
-    
-    y   = np.array(y)
-    y[y==128] = 1
-    y[y==255] = 2
-    y[y>2   ] = 0   #sanity check
-    
-    if len( np.unique(y) ) > 3:
-        raise NameError('The output has more than 3 values')
-    
-    #y = to_categorical(y).astype(np.int8)
-    
-    
-    mean_R = np.mean(X_R)
-    mean_G = np.mean(X_G)
-    mean_B = np.mean(X_B)
-    
-    mean_dic = {}
-    mean_dic['mean_R']   = mean_R
-    mean_dic['mean_G']   = mean_G
-    mean_dic['mean_B']   = mean_B
-    mean_dic['file_loc'] = im_dir_X
-    
-    
-    X_R -= mean_R
-    X_G -= mean_G
-    X_B -= mean_B
-    
-    
-    X = np.concatenate(
-            ( np.expand_dims(X_R,3),
-              np.expand_dims(X_G,3),
-              np.expand_dims(X_B,3) ),
-              3)
-    
-    X = np.concatenate((
-                        X,
-                        np.flip(X,1),
-                        np.flip(X,2),
-                        np.flip(np.flip(X,1),2)
-                                    ),axis=0)
-    
-    
-    y = np.concatenate((
-                                y,
-                        np.flip(y,1),
-                        np.flip(y,2),
-                        np.flip(np.flip(y,1),2)
-                                    ),axis=0)
-
-    
-    
-    X       = X.astype(np.float16)
-    y       = to_categorical(y).astype(np.uint8)
-    
-    
-    try:
-        os.mkdir(im_dir_X + '/X' )
-        os.mkdir(im_dir_y + '/y' )
-    except: 
-            print('folder exits')
-    
-    for im_num in range( np.shape(X)[0] ):
-        np.save( im_dir_X + '/X/' + f'{im_num}', X[im_num,:,:,:]  )
-        np.save( im_dir_X + '/y/' + f'{im_num}', y[im_num,:,:,:]  )
-        
-    
-    
-    json.dump(str(mean_dic), open(im_dir_X + '/mean_dic.json','w'))
-    
-    
-
-class DataGenerator(keras.utils.Sequence):
+class DataGenerator(tf.keras.utils.Sequence):
     
     def __init__(self, file_loc, list_IDs,  
                  batch_size, dim, 
-                 n_channels_in=3,n_channels_out=3,shuffle=True):
+                 n_channels_in=3,n_channels_out=2,shuffle=True):
         
 
         'Initialization'
@@ -333,23 +226,20 @@ class DataGenerator(keras.utils.Sequence):
     def __data_generation(self, list_IDs_temp):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
-        X = np.empty((self.batch_size, *self.dim, self.n_channels_in ))
-        y = np.empty((self.batch_size, *self.dim, self.n_channels_out))
-
+        X_train       = np.empty((self.batch_size, *self.dim, self.n_channels_in ))
+        y       = np.empty((self.batch_size, *self.dim, self.n_channels_out))
+        masks    = np.empty((self.batch_size, *self.dim, 2 ))
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
     
-            X[i,] = np.load((self.file_loc + '/X/' + str(ID) + '.npy'))
+            X_train[i,] = np.load((self.file_loc + '/X_train/' + f'{ID:04}' + '.npy'))
             
-            y[i,] = np.load((self.file_loc + '/y/' + str(ID) + '.npy'))
-
-        return X, y
-
-def renameims():
-    chan = 'R'
-    data_loc            = 'train_scaled/Y_train_scaled'
-    all_dirs = glob.glob(data_loc + f'/*.tif')
- 
-    for im, imloc in enumerate(all_dirs):
-        print( f'New_Y_train/X_{im:04}.tif')
-        copyfile(imloc, f'New_Y_train/Y_{im:04}.tif')
+            mask = np.load((self.file_loc + '/Binary_R_train/' + f'{ID:04}' + '.npy'))/255
+            masks[i,] = np.concatenate((mask[:,:,np.newaxis],mask[:,:,np.newaxis] ), axis=2)
+            
+            y_train = np.load((self.file_loc + '/y_train/' + f'{ID:04}' + '.npy'))
+            y[i,]   = y_train[:,:,1:] 
+            y[i,] = np.multiply(masks[i,],y[i,]) 
+            
+        X = [X_train, masks]
+        return X, y 
