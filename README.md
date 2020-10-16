@@ -22,6 +22,12 @@ The base architecture of cellnet is a Unet with the encoder and decoder each con
 
 ## Instructions
  Model is run using tensorflow 2.3  
- 
- 1. Create a folder "Images" consisting of all images to process
- 2. 
+### Code
+
+  - **application**: for use applying the trained model to any data_set
+  - **cell_utils**: general utility functions for cellnet
+  - **create_data_loop**: Used to create the training / test datasets
+  - **post_analysis**: Used to evaluate trained models against a testset 
+  - **post_utils**: general utility functions for post_analysis and application
+  - **resunet**: functions used to build the model structure of cellnet
+  - **traintest**: Used to train all models
