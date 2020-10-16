@@ -21,19 +21,24 @@ from scipy.ndimage.measurements import label as find_conn_comps
 import json
 import os
 import tensorflow as tf
+from tensorflow.keras.utils import to_categorical
+from nd2reader import ND2Reader as nd2
+import generalized_otsu as gotsu
 import cell_utils as cu
 import post_utils as pu
+import pandas as pd
 
+model_name          = 'cellnet_1014_dl_1655'
+image_dims          = (640,560)                          # (w x h)
+data_loc            = '../numpys/X_test'
+npy_loc             ='../numpys/X_test/*.npy'   
+scale               = 1.683 # square microns per pixel, from image metadata, remmeber to rescale when resizing the image
 
-model_name          = 'cellnet_today_biggest'
-image_dims          = (640,560)         # (w x h) is opposite of convention bc cv2 is dumb
-data_loc         = '../numpys/X_test'
-all_dirs         =glob.glob('../numpys/X_test/*.npy')       
-y_dirs           =glob.glob('../numpys/y_test/*.npy')
+save_img        = False          # save an image of each prediction
+record_metrics  = True
+save_results    = True
+num_heads       = 1             # 1-cells , 2-cells and nuclei
 
-save_img        = False         # Turn to True to save an image of each prediction
-known_test      = True         # Turn to True to use manually pre-processed Ys as a test
-record_metrics  = False
 
 
 try:
@@ -52,7 +57,7 @@ try:
                                                       'iou_0': cu.build_iou_for(label=0),
                                                       'iou_1': cu.build_iou_for(label=1)} ) #loads the model
     print('-'*50)
-    print(f'Sucefully loaded {model_name}')    
+    print(f'Sucefully loaded {model_name}')
     print('-'*50)
 
 except:
@@ -60,49 +65,68 @@ except:
   print('No checkpoint found')
   print('*'*50)
 
-'''
-Appply model to make predictions
 
-- Use get_mask to get a binary mask of the cells based on red channel
-- Use get_nuclei to get a binary mask of nuclei based on blue channel
-- use det_activation to use the nuclei and predicction mask to determine the
-    average activation level of all the cells in the image
-- Returns "data_set" which contains the number of cells per image and the average activation
-- Used a for loop to do 1 image at a time so it could handle large data sets
-    i.e. for actual implementation it will be used on 500+ images
-'''
-data_set = np.zeros((len(all_dirs),2))
-for im_num in range( len(all_dirs) ):
-    #for im_num in range(1):
-    print(f'reading_image_{im_num:04}')
-    img = np.zeros((image_dims[1],image_dims[0],3))
-    img[:,:,:] = np.load( data_loc + f'/{im_num:04}.npy' )
+def test_evaluation(npy_loc, image_dims, model_name, record_metrics=True, save_img=True, save_results=True ):
+    '''
+    '''
     
-    mask = pu.get_mask(img, data_loc, im_num, image_dims)
-    mask = np.concatenate((mask[:,:,np.newaxis],mask[:,:,np.newaxis]
-                           #,mask[:,:,np.newaxis]
-                           ), axis=2) 
+    all_dirs = glob.glob(npy_loc)
+    data_set = np.zeros((len(all_dirs),4))
+    metric_names = ['loss', 'IOU_loss', 'IOU_0', 'IOU_1','# cells', 'activation', 'area', 'correct']
+    eval_metrics = []
+    for im_num in range( len(all_dirs) ):
+        #for im_num in range(1):
+        print(f'reading_image_{im_num:04}')
+            
+        img = np.zeros((image_dims[1],image_dims[0],3))
+        img[:,:,:] = np.load( data_loc + f'/{im_num:04}.npy' )
     
-    nuclei = pu.get_nuclei(img, data_loc, im_num, image_dims)      
+        mask = pu.get_mask(img)
+        mask = np.concatenate((mask[:,:,np.newaxis],mask[:,:,np.newaxis] ), axis=2) 
     
-    prediction = model.predict(x=[np.expand_dims(img, axis=0),np.expand_dims(mask, axis=0)])
-    prediction = np.argmax(prediction[0,:,:], axis=2)           # This only predicts (0,1)
-    prediction = np.add(prediction, (mask[:,:,0]/np.max(mask[:,:,0]))) # add the mask to segment out backgroud
-    if known_test ==True:
-        prediction = np.argmax(np.load(y_dirs[im_num]), axis = 2)
-        if record_metrics == True:
-            eval_metrics = []
-            eval_metrics.append(model.evaluate(x=[img[np.newaxis,],mask[np.newaxis,]],y=prediction[np.newaxis])) # might need to covert prediction to catigorical
-    if save_img ==True:
-        np.save(f'../evaluation/{model_name}/{im_num:04}_predict',np.array(prediction))
+        nuclei = pu.get_nuclei(img) 
+        nuclei = np.concatenate((nuclei[:,:,np.newaxis],nuclei[:,:,np.newaxis] ), axis=2)
+        y_test = np.load(f'../numpys/y_test/{im_num:04}.npy')
+        y_true = np.argmax(y_test, axis = 2)
+        y_test = y_test[:,:,1:] 
+        prediction = model.predict(x=[np.expand_dims(img, axis=0),np.expand_dims(mask, axis=0)])
+        prediction = np.argmax(prediction[0,:,:], axis=2)           # This only predicts (0,1)
+        prediction = np.add(prediction, (mask[:,:,0]/np.max(mask[:,:,0]))) # add the mask to segment out backgroud
         
+        eval_metrics.append(model.evaluate(x=[np.expand_dims(img, axis=0),np.expand_dims(mask, axis=0)],y=y_test[np.newaxis]))
         
-    avg_activation, num_cells = pu.det_activation(prediction, nuclei) # applies nuclei mask to predicction and determines activation for each cell
-    data_set[im_num,0] = num_cells
-    data_set[im_num,1] = avg_activation-1       # need to subtract 1 becasue acivation values range from 1-2
-
-
-
+        if save_img ==True:
+            plt.subplot(1,3,1)
+            plt.imshow(y_true[:,:], clim=(0,2))
+            plt.title('True')
+            plt.xticks([])
+            plt.yticks([])
+            plt.subplot(1,3,2)
+            plt.imshow(prediction[:,:], clim=(0,2))
+            plt.title('Predicted')
+            plt.xticks([])
+            plt.yticks([])
+            plt.subplot(1,3,3)
+            plt.imshow( np.equal(prediction[:,:],y_true[:,:]), cmap = 'gray' )
+            plt.title('Errors')
+            plt.xticks([])
+            plt.yticks([])
+            fig = plt.gcf()
+            fig.set_size_inches(20,6)
+            plt.savefig(f'../evaluation/{model_name}/{im_num:04}.png')
+        
+        avg_activation, num_cells = pu.det_activation(prediction, nuclei[:,:,0]) # applies nuclei mask to predicction and determines activation for each cell
+        area = np.count_nonzero(prediction)*scale
+        num_correct, num_cells_comp = pu.compare_cells(nuclei[:,:,0], prediction, y_true)
+        data_set[im_num,0] = num_cells
+        data_set[im_num,1] = avg_activation
+        data_set[im_num,2] = area    
+        data_set[im_num,3] = num_correct
+        
+    eval_metrics = np.concatenate((eval_metrics,data_set), axis=1) 
+    eval_metrics = pd.DataFrame(eval_metrics, columns = metric_names)
+    if save_results ==True:
+        eval_metrics.to_csv(f'../evaluation/{model_name}/eval_metrics.csv', header=True)
 
 
 
