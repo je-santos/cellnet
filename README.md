@@ -4,7 +4,7 @@
 Cellnet is a convolutional neural network trained to classify and segment 2 types of cells; activated myofibroblasts and fibroblasts. 
 
 The model input is a 3 channel flourescent image:
-1. actin
+1. F-actin
 2. alpha-smooth muscle actin
 3. Nuclei / DAPI
 
@@ -20,10 +20,8 @@ Postprocessing provides the following for each image:
 
 ## Model Architecture
 <img align="right" width="40%" height="40%" src="https://github.com/ahillsley/cellnet/blob/master/illustrations/Picture2.png"/>
-The base architecture of cellnet is a Unet with the encoder and decoder each consisting of 3 "res blocks". With each resblock the number of filters in the Conv2D layer is doubled and the image downscaled by a factor of 2. There are also 3 skip connections that pass information directly from the encoder to the decoder, which help preserve spacial information. Lastly a binary mask of the cells is made from the actin channel and passed directly to the decoder in order to segment the cells from the background.
+The base architecture of cellnet is a ResUnet with the encoder and decoder each consisting of 3 residual blocks. The model takes advantage of the F-actin channel of the input to segment a cell mask. This is then applied to the end of the decoder, effectivly eliminating the background class and reducing the number of predicted classes from 3 to 2. 
 
-## Instructions
-   
 ### Code
 
   - **application**: for use applying a trained model to any data_set, can read images saved as numpy arrays or .nd2
