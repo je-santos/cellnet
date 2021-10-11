@@ -1,4 +1,4 @@
-# A Deep learning approach to myofibroblast identification and segmentation
+# A deep learning approach to myofibroblast identification and segmentation
 ## Introduction
 <img align="right" width="40%" height="40%" src="https://github.com/ahillsley/cellnet/blob/master/illustrations/Picture1.png"/>
 Cellnet is a convolutional neural network trained to classify and segment 2 types of cells; activated myofibroblasts and fibroblasts. 
